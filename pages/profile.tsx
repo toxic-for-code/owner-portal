@@ -31,6 +31,11 @@ export default function Profile() {
     const fetchHalls = async () => {
       setLoading(true);
       const res = await fetch('/api/halls?owner=me');
+      if (res.status === 401) {
+        router.replace('/signin');
+        setLoading(false);
+        return;
+      }
       if (res.ok) {
         const data = await res.json();
         setHalls(data.halls || []);
@@ -40,6 +45,11 @@ export default function Profile() {
     const fetchBookings = async () => {
       setBookingsLoading(true);
       const res = await fetch('/api/bookings?owner=me');
+      if (res.status === 401) {
+        router.replace('/signin');
+        setBookingsLoading(false);
+        return;
+      }
       if (res.ok) {
         const data = await res.json();
         setBookings(data.bookings || []);
@@ -338,8 +348,8 @@ export default function Profile() {
                     managerText={manager ? `${manager?.name}${manager?.contact ? ` (${manager.contact})` : ''}` : undefined}
                     remark={remarks[bookingId] || ''}
                     onRemarkChange={(val) => setRemarks(prev => ({ ...prev, [bookingId]: val }))}
-                    onApprove={statusLower.includes('pending') ? async () => { await fetch(`/api/bookings/${bookingId}/approve`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ remark: remarks[bookingId] || '' }) }); const res = await fetch('/api/bookings?owner=me'); if (res.ok) { const data = await res.json(); setBookings(data.bookings || []); } } : undefined}
-                    onDecline={statusLower.includes('pending') ? async () => { await fetch(`/api/bookings/${bookingId}/decline`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ remark: remarks[bookingId] || '' }) }); const res = await fetch('/api/bookings?owner=me'); if (res.ok) { const data = await res.json(); setBookings(data.bookings || []); } } : undefined}
+                    onApprove={statusLower.includes('pending') ? async () => { const act = await fetch(`/api/bookings/${bookingId}/approve`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ remark: remarks[bookingId] || '' }) }); if (act.status === 401) { router.replace('/signin'); return; } const res = await fetch('/api/bookings?owner=me'); if (res.status === 401) { router.replace('/signin'); return; } if (res.ok) { const data = await res.json(); setBookings(data.bookings || []); } } : undefined}
+                    onDecline={statusLower.includes('pending') ? async () => { const act = await fetch(`/api/bookings/${bookingId}/decline`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ remark: remarks[bookingId] || '' }) }); if (act.status === 401) { router.replace('/signin'); return; } const res = await fetch('/api/bookings?owner=me'); if (res.status === 401) { router.replace('/signin'); return; } if (res.ok) { const data = await res.json(); setBookings(data.bookings || []); } } : undefined}
                     showActions={statusLower.includes('pending')}
                   />
                 );
