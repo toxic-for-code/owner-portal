@@ -45,6 +45,7 @@ export default function Home() {
             </div>
             
             {/* User Dropdown Menu */}
+            {status === 'authenticated' ? (
             <div className="relative group">
               <div className="flex items-center gap-3 bg-white border border-gray-200 rounded-full px-6 py-3 hover:shadow-md transition-all duration-200 cursor-pointer">
                 <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center">
@@ -68,7 +69,7 @@ export default function Home() {
                   </div>
                   
                   <div className="py-1">
-                    <a href="/profile" className="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors">
+                    <a href="/dashboard" className="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors">
                       <svg className="w-4 h-4 mr-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 10l9-7 9 7v8a2 2 0 01-2 2H5a2 2 0 01-2-2v-8z" />
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 21V12h6v9" />
@@ -118,6 +119,12 @@ export default function Home() {
                 </div>
               </div>
             </div>
+            ) : (
+              <div className="flex items-center gap-3">
+                <span className="font-semibold text-gray-700">Welcome, Guest</span>
+                <a href="/signin" className="inline-flex items-center justify-center px-4 py-2 rounded-md font-semibold text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 bg-blue-600 text-white hover:bg-blue-700 focus:ring-blue-500">Sign In</a>
+              </div>
+            )}
           </div>
         </div>
       </nav>

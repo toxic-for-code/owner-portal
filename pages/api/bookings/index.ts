@@ -53,11 +53,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       // Use lean() to get plain objects and include all existing fields
       const bookings = await Booking.find(query).sort({ createdAt: -1 }).lean();
       // Lookup customer details when userId is present
+      // Collect potential identifiers to lookup users from backend 'users' collection
       const userIds: string[] = bookings
         .map((b: any) => b.userId?.toString?.() ?? b.userId)
         .filter((id: any) => typeof id === 'string');
+      const phones: string[] = bookings
+        .map((b: any) => (typeof b.customerContact === 'string' ? b.customerContact : null))
+        .filter((p: any) => typeof p === 'string');
       const uniqueUserIds = Array.from(new Set(userIds));
-      let usersMap: Record<string, any> = {};
+      const uniquePhones = Array.from(new Set(phones));
+
+      let usersById: Record<string, any> = {};
+      let usersByPhone: Record<string, any> = {};
+
       if (uniqueUserIds.length > 0) {
         const ids = uniqueUserIds
           .map(id => {
@@ -65,8 +73,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           })
           .filter(Boolean) as mongoose.Types.ObjectId[];
         const users = await User.find({ _id: { $in: ids } }).select('name phone email image').lean();
-        usersMap = users.reduce((acc: Record<string, any>, u: any) => {
+        usersById = users.reduce((acc: Record<string, any>, u: any) => {
           acc[u._id.toString()] = u;
+          return acc;
+        }, {});
+      }
+      if (uniquePhones.length > 0) {
+        const users = await User.find({ phone: { $in: uniquePhones } }).select('name phone email image').lean();
+        usersByPhone = users.reduce((acc: Record<string, any>, u: any) => {
+          if (u.phone) acc[u.phone] = u;
           return acc;
         }, {});
       }
@@ -98,10 +113,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         // Customer enrichment: prefer user record; fallback to stored customer fields
         customer: (() => {
           const uid = b.userId?.toString?.() ?? b.userId;
-          const user = uid ? usersMap[uid] : null;
+          const byId = uid ? usersById[uid] : null;
+          const byPhone = (typeof b.customerContact === 'string' && b.customerContact) ? usersByPhone[b.customerContact] : null;
+          const user = byId || byPhone || null;
           if (user) {
             return {
-              id: uid,
+              id: uid || user._id?.toString?.() || null,
               name: user.name,
               phone: user.phone || null,
               email: user.email || null,

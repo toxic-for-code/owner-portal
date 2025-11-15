@@ -3,11 +3,12 @@ import React from 'react';
 type Props = {
   bookingId: string;
   statusText: string;
-  statusClass: string;
+  statusClass: string; // kept for backward compatibility if parent computes color
   eventText: string;
   hallName: string;
   customerName: string;
   customerPhone?: string;
+  customerEmail?: string;
   paymentStatus: string;
   amountToOwner: number;
   advancePaid: number;
@@ -18,6 +19,7 @@ type Props = {
   onApprove?: () => void;
   onDecline?: () => void;
   showActions?: boolean;
+  bookingUrl?: string; // optional link for clickable Booking ID
 };
 
 export default function BookingApprovalCard({
@@ -28,6 +30,7 @@ export default function BookingApprovalCard({
   hallName,
   customerName,
   customerPhone,
+  customerEmail,
   paymentStatus,
   amountToOwner,
   advancePaid,
@@ -38,60 +41,124 @@ export default function BookingApprovalCard({
   onApprove,
   onDecline,
   showActions = true,
+  bookingUrl,
 }: Props) {
   const normalizedStatus = (statusText || '').toString().toLowerCase().replace(/\s+/g, '_');
+  const computedDue = typeof dueAmount === 'number' ? dueAmount : Math.max((amountToOwner || 0) - (advancePaid || 0), 0);
+
   return (
-    <div className="rounded-xl shadow-sm bg-blue-50 p-4 md:p-5 w-full">
-      {/* Header: ID + status */}
-      <div className="flex items-center gap-2 mb-3">
-        <span className="text-lg font-semibold text-blue-800">Booking ID: {bookingId}</span>
-        <span className={`text-xs font-bold px-2 py-1 rounded ${statusClass}`}>{statusText}</span>
-      </div>
-
-      {/* Details */}
-      <div className="space-y-1 text-gray-700">
-        <div><span className="font-semibold">Event:</span> {eventText}</div>
-        <div><span className="font-semibold">Hall:</span> {hallName}</div>
-        <div><span className="font-semibold">Customer:</span> {customerName}{customerPhone ? ` — ${customerPhone}` : ''}</div>
-        <div><span className="font-semibold">Payment Status:</span> {paymentStatus}</div>
-        <div><span className="font-semibold">Amount to Owner:</span> ₹{amountToOwner}</div>
-        <div>
-          <span className="font-semibold">Advance Paid:</span> ₹{advancePaid}{' '}
-          <span className="font-semibold">Due:</span> ₹{typeof dueAmount === 'number' ? dueAmount : Math.max((amountToOwner || 0) - (advancePaid || 0), 0)}
+    <div className="w-full rounded-2xl bg-white shadow-lg border border-gray-100 p-5">
+      <div className="relative rounded-xl bg-blue-50 border border-blue-100 p-5">
+        {/* Status pill overlapping top-right */}
+        <div className="absolute -top-3 right-4">
+          <span className={`inline-flex items-center px-3 py-1 text-xs font-semibold rounded-full shadow-sm ring-1 ring-yellow-200 bg-yellow-100 text-yellow-800`}>
+            {normalizedStatus || 'pending_owner_confirmation'}
+          </span>
         </div>
-        <div><span className="font-semibold">Manager:</span> {managerText || 'Not Assigned'}</div>
-      </div>
 
-      {normalizedStatus === 'pending_owner_confirmation' && (
-        <>
-          {/* Remark input */}
-          <div className="mt-4">
+        {/* Header: Booking ID clickable + Payment status */}
+        <div className="flex items-start justify-between mb-4">
+          {bookingUrl ? (
+            <a href={bookingUrl} className="text-blue-600 hover:text-blue-700 hover:underline font-semibold">
+              Booking ID: #{bookingId}
+            </a>
+          ) : (
+            <button type="button" className="text-blue-600 hover:text-blue-700 hover:underline font-semibold cursor-pointer">
+              Booking ID: #{bookingId}
+            </button>
+          )}
+          <span className="inline-flex px-2.5 py-1 text-xs font-medium rounded-full bg-white text-gray-700 border border-gray-200 shadow-sm">
+            {paymentStatus}
+          </span>
+        </div>
+
+        {/* Details grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+          <div className="rounded-lg bg-white/60 border border-blue-100 p-3">
+            <p className="text-xs font-medium text-blue-700">Event details</p>
+            <p className="mt-1 text-gray-900">{eventText}</p>
+          </div>
+          <div className="rounded-lg bg-white/60 border border-blue-100 p-3">
+            <p className="text-xs font-medium text-blue-700">Hall name</p>
+            <p className="mt-1 text-gray-900">{hallName}</p>
+          </div>
+
+          <div className="rounded-lg bg-white/60 border border-blue-100 p-3">
+            <p className="text-xs font-medium text-blue-700">Customer name</p>
+            <p className="mt-1 text-gray-900">{customerName}</p>
+          </div>
+          <div className="rounded-lg bg-white/60 border border-blue-100 p-3">
+            <p className="text-xs font-medium text-blue-700">Customer phone</p>
+            <p className="mt-1 text-gray-900">
+              {customerPhone ? (
+                <a href={`tel:${customerPhone.replace(/\s+/g, '')}`} className="text-blue-600 hover:text-blue-700 hover:underline">
+                  {customerPhone}
+                </a>
+              ) : (
+                '—'
+              )}
+            </p>
+          </div>
+          <div className="rounded-lg bg-white/60 border border-blue-100 p-3">
+            <p className="text-xs font-medium text-blue-700">Customer email</p>
+            <p className="mt-1 text-gray-900">
+              {customerEmail ? (
+                <a href={`mailto:${customerEmail}`} className="text-blue-600 hover:text-blue-700 hover:underline">
+                  {customerEmail}
+                </a>
+              ) : (
+                '—'
+              )}
+            </p>
+          </div>
+          <div className="rounded-lg bg-white/60 border border-blue-100 p-3">
+            <p className="text-xs font-medium text-blue-700">Amount to Owner</p>
+            <p className="mt-1 text-gray-900">₹{amountToOwner}</p>
+          </div>
+
+          <div className="rounded-lg bg-white/60 border border-blue-100 p-3">
+            <p className="text-xs font-medium text-blue-700">Advance Paid</p>
+            <p className="mt-1 text-gray-900">₹{advancePaid}</p>
+          </div>
+          <div className="rounded-lg bg-white/60 border border-blue-100 p-3">
+            <p className="text-xs font-medium text-blue-700">Due</p>
+            <p className="mt-1 text-gray-900">₹{computedDue}</p>
+          </div>
+
+          <div className="rounded-lg bg-white/60 border border-blue-100 p-3 md:col-span-2">
+            <p className="text-xs font-medium text-blue-700">Manager</p>
+            <p className="mt-1 text-gray-900">{managerText || 'Not Assigned'}</p>
+          </div>
+        </div>
+
+        {/* Remark & Actions */}
+        {showActions && normalizedStatus === 'pending_owner_confirmation' && (
+          <div className="mt-5 pt-4 border-t border-blue-100">
+            <label className="block text-xs font-medium text-gray-700 mb-1">Add remark (optional)</label>
             <input
               type="text"
               placeholder="Add remark (optional)"
-              className="w-full rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
+              className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
               value={remark}
               onChange={(e) => onRemarkChange(e.target.value)}
             />
+            <div className="mt-4 flex gap-3">
+              <button
+                onClick={onApprove}
+                className="flex-1 inline-flex items-center justify-center rounded-lg bg-green-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500"
+              >
+                Approve
+              </button>
+              <button
+                onClick={onDecline}
+                className="flex-1 inline-flex items-center justify-center rounded-lg bg-red-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500"
+              >
+                Decline
+              </button>
+            </div>
           </div>
-
-          {/* Actions */}
-          <div className="mt-4 flex gap-3">
-            <button
-              onClick={onApprove}
-              className="flex-1 inline-flex items-center justify-center rounded-lg bg-green-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500"
-            >
-              Approve
-            </button>
-            <button
-              onClick={onDecline}
-              className="flex-1 inline-flex items-center justify-center rounded-lg bg-red-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500"
-            >
-              Decline
-            </button>
-          </div>
-        </>
-      )}
+        )}
+      </div>
     </div>
   );
 }

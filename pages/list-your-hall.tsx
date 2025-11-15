@@ -231,7 +231,7 @@ const ListYourHall: React.FC = () => {
   };
   const handleModalClose = () => {
     setShowModal(false);
-    router.push('/profile');
+    router.push('/dashboard');
   };
 
   // Step content
@@ -482,7 +482,7 @@ const ListYourHall: React.FC = () => {
             <img src="/logo.png" alt="WeEnYou Logo" width={36} height={36} className="h-9 w-9 object-contain" />
             <span className="text-lg sm:text-xl font-bold tracking-tight text-blue-700">WeEnYou Hall Owner Portal</span>
           </div>
-          <a href="/profile" className="ml-auto">
+          <a href="/dashboard" className="ml-auto">
             <div className="flex items-center gap-2 border border-gray-200 rounded-full px-6 py-2 bg-white hover:shadow transition cursor-pointer">
               <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5.121 17.804A9 9 0 1112 21a8.963 8.963 0 01-6.879-3.196z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
               <span className="font-semibold text-lg text-gray-700">Welcome, Guest</span>
@@ -616,4 +616,4 @@ const ListYourHall: React.FC = () => {
   );
 };
 
-export default ListYourHall; 
+export default ListYourHall;

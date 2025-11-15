@@ -7,23 +7,51 @@ import Booking from '../../../../models/Booking';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') return res.status(405).json({ message: 'Method not allowed' });
-  const session = await getServerSession(req, res, authOptions);
-  if (!session || !session.user || (session.user as any).role !== 'owner' || (session.user as any).status !== 'active') {
-    return res.status(401).json({ message: 'Unauthorized' });
+  try {
+    const session = await getServerSession(req, res, authOptions);
+    if (!session || !session.user || (session.user as any).role !== 'owner' || (session.user as any).status !== 'active') {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+
+    const { id } = req.query;
+    if (!id || typeof id !== 'string' || !mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: 'Invalid booking id' });
+    }
+
+    if (mongoose.connection.readyState === 0) {
+      await connectDb();
+    }
+
+    const { remark } = req.body || {};
+
+    const ownerIdStr = (session.user as any).id as string;
+    let ownerObjectIdFilter: any = null;
+    try {
+      ownerObjectIdFilter = { ownerId: new mongoose.Types.ObjectId(ownerIdStr) };
+    } catch (e) {
+      ownerObjectIdFilter = null;
+    }
+
+    const filter: any = {
+      _id: new mongoose.Types.ObjectId(id),
+      ...(ownerObjectIdFilter
+        ? { $or: [ownerObjectIdFilter, { ownerId: ownerIdStr }] }
+        : { ownerId: ownerIdStr }),
+    };
+
+    const set: any = {
+      status: 'approved',
+      decisionAt: new Date(),
+    };
+    if (typeof remark === 'string' && remark.trim().length > 0) {
+      set.ownerDecisionRemark = remark.trim();
+    }
+
+    const updated = await Booking.findOneAndUpdate(filter, { $set: set }, { new: true, runValidators: false });
+    if (!updated) return res.status(404).json({ message: 'Booking not found or not owned by you' });
+    return res.status(200).json({ message: 'Booking approved', bookingId: updated._id.toString(), status: updated.status });
+  } catch (error) {
+    console.error('Error approving booking:', error);
+    return res.status(500).json({ message: 'Internal server error' });
   }
-  if (mongoose.connection.readyState === 0) {
-  await connectDb();
-  }
-  const { id } = req.query;
-  const { remark } = req.body || {};
-  const booking = await Booking.findById(id);
-  if (!booking) return res.status(404).json({ message: 'Booking not found' });
-  if (booking.ownerId.toString() !== (session.user as any).id) return res.status(403).json({ message: 'Forbidden' });
-  booking.status = 'approved';
-  if (typeof remark === 'string' && remark.trim().length > 0) {
-    booking.ownerDecisionRemark = remark.trim();
-  }
-  booking.decisionAt = new Date();
-  await booking.save();
-  return res.status(200).json({ message: 'Booking approved' });
 }
