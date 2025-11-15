@@ -54,8 +54,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const hid = booking.hallId?.toString?.() ?? booking.hallId;
   let hall: any = null;
   try {
-    const h = await Hall.findById(hid).select('name price').lean();
-    hall = h ? { id: h._id.toString(), name: h.name, price: h.price } : null;
+    const hDoc = await Hall.findById(hid).select('name price').lean();
+    const h: any = hDoc; // Narrow lean() type to object
+    hall = h ? { id: h._id?.toString?.() ?? h._id, name: h.name, price: h.price } : null;
   } catch {}
 
   const mapped = {
