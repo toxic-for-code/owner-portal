@@ -65,14 +65,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   let ownerId = ownerIdQuery;
   if (ownerParam === 'me') {
-    const session = await getServerSession(req, res, authOptions as any);
+    const session = (await getServerSession(req, res, authOptions as any)) as any;
     const user = (session?.user as any) || null;
     if (!user || user.role !== 'owner' || user.status !== 'active') {
       return res.status(401).json({ message: 'Unauthorized' });
     }
     ownerId = user.id;
   } else if (!ownerId) {
-    const session = await getServerSession(req, res, authOptions as any);
+    const session = (await getServerSession(req, res, authOptions as any)) as any;
     ownerId = (session?.user as any)?.id || undefined;
   }
   if (!ownerId || !mongoose.Types.ObjectId.isValid(ownerId)) {
@@ -258,7 +258,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       },
     ];
 
-    const agg = await Booking.aggregate(pipeline);
+    const agg = await Booking.aggregate(pipeline as any);
     const data = agg[0] || {};
 
     const revenueSum = data.revenueMetrics?.[0]?.totalRevenue ?? 0;

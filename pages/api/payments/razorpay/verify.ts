@@ -49,7 +49,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(404).json({ message: 'User not found' });
     }
 
-    return res.status(200).json({ verified: true, subscriptionPlan: updated.subscriptionPlan });
+    return res.status(200).json({ verified: true, subscriptionPlan: (updated as any).subscriptionPlan });
   } catch (e: any) {
     return res.status(500).json({ verified: true, message: 'Payment verified but failed to update subscription', error: e?.message || String(e) });
   }

@@ -66,8 +66,8 @@ export const authOptions = {
         if (dbUser) {
           token.name = (dbUser as any).name || token.name;
           token.subscriptionPlan = (dbUser as any).subscriptionPlan || token.subscriptionPlan || 'basic';
-          token.role = dbUser.role || token.role;
-          token.status = dbUser.status || token.status;
+          token.role = (dbUser as any).role || token.role;
+          token.status = (dbUser as any).status || token.status;
           token.phone = (dbUser as any).phone ?? token.phone;
           token.image = (dbUser as any).image ?? token.image;
         }

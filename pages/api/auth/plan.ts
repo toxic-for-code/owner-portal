@@ -17,7 +17,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
     const user = await User.findOne({ email: session.user.email }).select('subscriptionPlan role').lean();
     if (!user) return res.status(404).json({ message: 'User not found' });
-    return res.status(200).json({ subscriptionPlan: user.subscriptionPlan || 'basic', role: user.role });
+    return res.status(200).json({ subscriptionPlan: (user as any).subscriptionPlan || 'basic', role: (user as any).role });
   } catch (e: any) {
     return res.status(500).json({ message: 'Server error', error: e?.message || String(e) });
   }
