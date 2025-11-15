@@ -26,8 +26,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   let oid: any = null;
   try { oid = new mongoose.Types.ObjectId(id); } catch {}
-  const booking = await Booking.findById(oid || id).lean();
-  if (!booking) return res.status(404).json({ message: 'Not found' });
+  const bookingDoc = await Booking.findById(oid || id).lean();
+  if (!bookingDoc) return res.status(404).json({ message: 'Not found' });
+  const booking: any = bookingDoc; // Narrow lean() type to object for safe property access
 
   // Owner authorization: only allow the owner of the hall/booking
   const ownerId = (session.user as any).id;
