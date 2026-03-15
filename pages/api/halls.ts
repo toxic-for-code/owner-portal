@@ -15,21 +15,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   await connectDb();
 
   if (req.method === 'GET') {
-    // Only allow ?owner=me for now
     if (req.query.owner === 'me') {
       const ownerId = (session.user as any).id;
-      // Be defensive: support both ObjectId and string-stored ownerId to avoid data mismatches
       let ownerObjectIdFilter: any = null;
       try {
         ownerObjectIdFilter = { ownerId: new mongoose.Types.ObjectId(ownerId) };
       } catch (e) {
         ownerObjectIdFilter = null;
       }
-
       const query: any = ownerObjectIdFilter
         ? { $or: [ownerObjectIdFilter, { ownerId }] }
         : { ownerId };
-
       const halls = await Hall.find(query).sort({ createdAt: -1 });
       return res.status(200).json({ halls });
     } else {
@@ -38,21 +34,53 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   if (req.method === 'POST') {
-    const { name, description, images, price, capacity, amenities, address, city, state, pincode } = req.body;
-    // For now, set coordinates to [0,0]. You can update this to use real geocoding.
+    const {
+      // Basic
+      name, venueType, description, contactNumber, ownerEmail,
+      // Location
+      address, city, state, pincode,
+      nearestAirportKm, nearestRailwayKm, nearestMetroKm, mapEmbedUrl,
+      // Payout (New)
+      payoutDetails,
+      // Comprehensive fields
+      images, price, capacity, amenities, highlights, eventSpaces,
+      pricing, catering, decoration, vendors, accommodation, policies, parking,
+      photoCategories, blockedDates, allowReviews,
+    } = req.body;
+
     const hall = await Hall.create({
       name,
+      venueType: venueType || '',
       description,
+      contactNumber: contactNumber || '',
+      ownerEmail: ownerEmail || '',
+      payoutDetails: payoutDetails || { payoutMethod: '' }, // Add payout details
       images: images || [],
-      price,
-      capacity,
+      photoCategories: photoCategories || {},
+      price: price || pricing?.startingPrice || 0,
+      capacity: capacity || (eventSpaces?.[0]?.seatingCapacity) || 1,
       amenities: amenities || [],
+      highlights: highlights || [],
+      eventSpaces: eventSpaces || [],
+      pricing: pricing || {},
+      catering: catering || {},
+      decoration: decoration || {},
+      vendors: vendors || {},
+      accommodation: accommodation || {},
+      policies: policies || {},
+      parking: parking || {},
+      allowReviews: allowReviews !== false,
+      blockedDates: blockedDates || [],
       location: {
         address,
         city,
         state,
         pincode,
         coordinates: { type: 'Point', coordinates: [0, 0] },
+        nearestAirportKm: nearestAirportKm || null,
+        nearestRailwayKm: nearestRailwayKm || null,
+        nearestMetroKm: nearestMetroKm || null,
+        mapEmbedUrl: mapEmbedUrl || '',
       },
       ownerId: (session.user as any).id,
       status: 'pending',

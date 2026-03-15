@@ -1,619 +1,473 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/router';
 import { useSession } from 'next-auth/react';
+import Head from 'next/head';
 
-const STEPS = [
-  'Venue Details',
-  'Location',
-  'Pricing',
-  'Amenities',
-  'Photos',
-  'Review & Submit',
-];
+import { INITIAL_FORM, STEPS, VenueFormData } from '../components/venue-form/formTypes';
+import Step1BasicInfo from '../components/venue-form/Step1BasicInfo';
+import Step2Overview from '../components/venue-form/Step2Overview';
+import Step3Spaces from '../components/venue-form/Step3Spaces';
+import Step4Pricing from '../components/venue-form/Step4Pricing';
+import Step5Catering from '../components/venue-form/Step5Catering';
+import Step6Accommodation from '../components/venue-form/Step6Accommodation';
+import Step7Amenities from '../components/venue-form/Step7Amenities';
+import Step8Photos from '../components/venue-form/Step8Photos';
+import Step9Availability from '../components/venue-form/Step9Availability';
+import Step10Review from '../components/venue-form/Step10Review';
 
-const AMENITIES = [
-  'Parking',
-  'Air Conditioning',
-  'Wi-Fi',
-  'Catering',
-  'Stage',
-  'Audio/Visual Equipment',
-];
+const STORAGE_KEY = 'weenyou_venue_draft';
 
-function classNames(...classes: string[]) {
-  return classes.filter(Boolean).join(' ');
-}
-
-const ListYourHall: React.FC = () => {
+export default function ListYourHall() {
   const { data: session, status } = useSession();
   const router = useRouter();
+  
   const [step, setStep] = useState(0);
-  const [showModal, setShowModal] = useState(false);
-
-  const [form, setForm] = useState({
-    name: '',
-    description: '',
-    address: '',
-    city: '',
-    state: '',
-    pincode: '',
-    price: '',
-    capacity: '',
-    amenities: [...AMENITIES],
-    customAmenities: [] as string[],
-    selectedAmenities: [] as string[],
-    photos: [] as File[],
-    photoPreviews: [] as string[],
-    photoUrls: [] as string[],
-  });
-  const [errors, setErrors] = useState<{ [key: string]: string }>({});
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [form, setForm] = useState<VenueFormData>(INITIAL_FORM);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
-  const [submitSuccess, setSubmitSuccess] = useState('');
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
 
-  // Auth check
+  // Load draft from localStorage
   useEffect(() => {
-    if (status === 'loading') return;
-    if (!session || (session.user as any)?.role !== 'owner') {
-      router.replace('/signup');
-      return;
+    const draft = localStorage.getItem(STORAGE_KEY);
+    if (draft) {
+      try {
+        const parsed = JSON.parse(draft);
+        // Don't restore photos as File objects can't be serialized
+        setForm({ ...INITIAL_FORM, ...parsed, photos: [] });
+      } catch (e) {
+        console.error('Failed to load draft', e);
+      }
     }
-  }, [session, status, router]);
+  }, []);
 
-  // Validation logic for each step
+  // Save draft on change
+  useEffect(() => {
+    const { photos, ...rest } = form;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(rest));
+  }, [form]);
+
+  // Auth Guard (Owner only)
+  useEffect(() => {
+    if (status === 'unauthenticated') router.push('/signin');
+    if (status === 'authenticated' && (session?.user as any)?.role !== 'owner') {
+      router.push('/dashboard');
+    }
+  }, [status, session, router]);
+
   const validateStep = () => {
-    let errs: { [key: string]: string } = {};
+    const newErrors: Record<string, string> = {};
     if (step === 0) {
-      if (!form.name.trim()) errs.name = 'Venue name is required.';
-      if (!form.description.trim()) errs.description = 'Description is required.';
+      if (!form.name.trim()) newErrors.name = 'Venue name is required';
+      if (!form.venueType) newErrors.venueType = 'Select a venue type';
+      if (!form.city.trim()) newErrors.city = 'City is required';
+      if (!form.state) newErrors.state = 'State is required';
+      if (!form.address.trim()) newErrors.address = 'Address is required';
+      if (!form.contactNumber.trim()) newErrors.contactNumber = 'Contact is required';
+      if (!form.ownerEmail.trim()) newErrors.ownerEmail = 'Email is required';
+      if (!form.pincode.trim()) newErrors.pincode = 'Pincode is required';
+      
+      // Payout validation (Optional but if filled, must be correct)
+      if (form.payoutMethod === 'Bank Transfer') {
+        if (form.accountNumber !== form.accountNumberConfirm) {
+          newErrors.accountNumberMatch = 'Account numbers do not match';
+        }
+      }
     } else if (step === 1) {
-      if (!form.address.trim()) errs.address = 'Address is required.';
-      if (!form.city.trim()) errs.city = 'City is required.';
-      if (!form.state.trim()) errs.state = 'State is required.';
-      if (!form.pincode.trim()) errs.pincode = 'Pincode is required.';
-      else if (!/^\d{6}$/.test(form.pincode)) errs.pincode = 'Pincode must be 6 digits.';
-    } else if (step === 2) {
-      if (!form.price.trim()) errs.price = 'Price is required.';
-      else if (Number(form.price) < 500) errs.price = 'Minimum price is 500.';
-      if (!form.capacity.trim()) errs.capacity = 'Capacity is required.';
-      else if (Number(form.capacity) < 50) errs.capacity = 'Minimum capacity is 50.';
-    } else if (step === 3) {
-      if (form.selectedAmenities.length === 0) errs.amenities = 'Select at least one amenity.';
-    } else if (step === 4) {
-      if (form.photos.length === 0) errs.photos = 'Upload at least one photo.';
+      if (!form.description.trim()) newErrors.description = 'Description is required';
+      else if (form.description.length < 50) newErrors.description = 'Description is too short (min 50 chars)';
     }
-    setErrors(errs);
-    return Object.keys(errs).length === 0;
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
   };
 
-  // Step navigation
-  const nextStep = () => {
-    if (validateStep()) setStep((s) => s + 1);
-  };
-  const prevStep = () => setStep((s) => s - 1);
-
-  // Form field change
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    const { name, value } = e.target;
-    setForm((f) => ({ ...f, [name]: value }));
-  };
-
-  // Amenities
-  const handleAmenityChange = (amenity: string) => {
-    setForm((f) => {
-      const selected = f.selectedAmenities.includes(amenity)
-        ? f.selectedAmenities.filter((a) => a !== amenity)
-        : [...f.selectedAmenities, amenity];
-      return { ...f, selectedAmenities: selected };
-    });
-  };
-  const [customAmenity, setCustomAmenity] = useState('');
-  const addCustomAmenity = () => {
-    const trimmed = customAmenity.trim();
-    if (trimmed && !form.amenities.includes(trimmed)) {
-      setForm((f) => ({
-        ...f,
-        amenities: [...f.amenities, trimmed],
-        selectedAmenities: [...f.selectedAmenities, trimmed],
-        customAmenities: [...f.customAmenities, trimmed],
-      }));
-      setCustomAmenity('');
+  const next = () => {
+    if (validateStep()) {
+      setStep(s => Math.min(s + 1, STEPS.length - 1));
+      // Removed window.scrollTo to prevent jumping
     }
   };
 
-  // Photos
-  const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files ? Array.from(e.target.files) : [];
-    if (files.length) {
-      setForm((f) => ({
-        ...f,
-        photos: [...f.photos, ...files],
-        photoPreviews: [
-          ...f.photoPreviews,
-          ...files.map((file) => URL.createObjectURL(file)),
-        ],
-      }));
-      // Upload files to /api/upload
-      const formData = new FormData();
-      files.forEach((file) => formData.append('file', file));
-      const res = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData,
-      });
-      if (res.ok) {
-        const data = await res.json();
-        console.log('Upload response (handlePhotoChange):', data);
-        setForm((f) => ({
-          ...f,
-          photoUrls: [...f.photoUrls, ...(data.urls || [])],
-        }));
-      }
-    }
-  };
-  const handleDrop = async (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    const files = Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith('image/'));
-    if (files.length) {
-      setForm((f) => ({
-        ...f,
-        photos: [...f.photos, ...files],
-        photoPreviews: [
-          ...f.photoPreviews,
-          ...files.map((file) => URL.createObjectURL(file)),
-        ],
-      }));
-      // Upload files to /api/upload
-      const formData = new FormData();
-      files.forEach((file) => formData.append('file', file));
-      const res = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData,
-      });
-      if (res.ok) {
-        const data = await res.json();
-        console.log('Upload response (handleDrop):', data);
-        setForm((f) => ({
-          ...f,
-          photoUrls: [...f.photoUrls, ...(data.urls || [])],
-        }));
-      }
-    }
-  };
-  const removePhoto = (idx: number) => {
-    setForm((f) => {
-      const newPhotos = [...f.photos];
-      const newPreviews = [...f.photoPreviews];
-      newPhotos.splice(idx, 1);
-      newPreviews.splice(idx, 1);
-      return { ...f, photos: newPhotos, photoPreviews: newPreviews };
-    });
+  const back = () => {
+    setStep(s => Math.max(s - 1, 0));
+    // Removed window.scrollTo to prevent jumping
   };
 
-  // Submit
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async () => {
+    setIsSubmitting(true);
     setSubmitError('');
-    setSubmitSuccess('');
-    if (step < STEPS.length - 1) {
-      nextStep();
-      return;
-    }
-    console.log('Submitting hall with images:', form.photoUrls);
-    const payload = {
-      name: form.name,
-      description: form.description,
-      images: form.photoUrls, // Use uploaded URLs
-      price: Number(form.price),
-      capacity: Number(form.capacity),
-      amenities: form.selectedAmenities,
-      address: form.address,
-      city: form.city,
-      state: form.state,
-      pincode: form.pincode,
-    };
-    console.log('Payload to /api/halls:', payload);
+
     try {
+      // Prepare payload
+      const payload = {
+        name: form.name,
+        venueType: form.venueType,
+        description: form.description,
+        contactNumber: form.contactNumber,
+        ownerEmail: form.ownerEmail,
+        
+        // Payout Details
+        payoutDetails: {
+          payoutMethod: form.payoutMethod,
+          bankDetails: form.payoutMethod === 'Bank Transfer' ? {
+            accountHolderName: form.accountHolderName,
+            bankName: form.bankName,
+            accountNumber: form.accountNumber,
+            ifscCode: form.ifscCode,
+            branchName: form.branchName,
+            accountType: form.accountType,
+          } : undefined,
+          upiId: form.payoutMethod === 'UPI ID' ? form.upiId : undefined,
+        },
+
+        address: form.address,
+        city: form.city,
+        state: form.state,
+        pincode: form.pincode,
+        nearestAirportKm: Number(form.nearestAirportKm),
+        nearestRailwayKm: Number(form.nearestRailwayKm),
+        nearestMetroKm: Number(form.nearestMetroKm),
+        mapEmbedUrl: form.mapEmbedUrl,
+        highlights: form.highlights,
+        amenities: form.amenities,
+        eventSpaces: form.eventSpaces.map(({ id, name, type, area, seatingCapacity, floatingCapacity }) => ({
+          name,
+          type: type as any,
+          area: Number(area),
+          seatingCapacity: Number(seatingCapacity),
+          floatingCapacity: Number(floatingCapacity)
+        })),
+        pricing: {
+          startingPrice: Number(form.startingPrice),
+          hallRental: Number(form.hallRental),
+          lawnRental: Number(form.lawnRental),
+          fullVenueRental: Number(form.fullVenueRental),
+          pricingType: form.pricingType,
+          gstApplicable: form.gstApplicable,
+          gstPercent: Number(form.gstPercent),
+          serviceChargePercent: Number(form.serviceChargePercent),
+        },
+        catering: {
+          inHouse: form.inHouseCatering,
+          outsideAllowed: form.outsideCateringAllowed,
+          vegPlatePrice: Number(form.vegPlatePrice),
+          nonVegPlatePrice: Number(form.nonVegPlatePrice),
+          cuisines: form.cuisines,
+          minGuests: Number(form.minGuests),
+          kitchenForOutsideCaterers: form.kitchenForOutsideCaterers,
+          foodServiceStyle: form.foodServiceStyle,
+          liveCounters: form.liveCounters,
+          dessertCounters: form.dessertCounters,
+          beverageCounters: form.beverageCounters,
+          bartendingService: form.bartendingService,
+          alcoholPolicy: {
+            served: form.alcoholServed,
+            outsideAllowed: form.outsideAlcoholAllowed,
+            corkageCharges: Number(form.corkageCharges),
+          },
+        },
+        decoration: {
+          inHouseDecorator: form.inHouseDecorator,
+          outsideDecoratorAllowed: form.outsideDecoratorAllowed,
+          startingPrice: Number(form.decorationStartingPrice),
+          packages: {
+            basic: Number(form.basicDecorPrice),
+            premium: Number(form.premiumDecorPrice),
+            luxury: Number(form.luxuryDecorPrice),
+          },
+          flowerDecor: {
+            available: form.flowerDecorAvailable,
+            startingPrice: Number(form.flowerDecorPrice),
+          },
+          stageSetup: form.stageSetup,
+          mandapSetup: form.mandapSetup,
+          lightingDecor: form.lightingDecor,
+          themeDecor: form.themeDecor,
+          signageAvailable: form.signageAvailable,
+        },
+        vendors: {
+          photography: {
+            allowed: form.photographyAllowed,
+            outsideAllowed: form.outsidePhotographerAllowed,
+            inHouseAvailable: form.inHousePhotographerAvailable,
+            startingPrice: Number(form.photographyStartingPrice),
+            videography: form.videographyAvailable,
+            cinematic: form.cinematicVideography,
+            droneAllowed: form.droneAllowed,
+            photoBooth: form.photoBooth,
+          },
+          entertainment: {
+            djAllowed: form.djAllowed,
+            outsideDjAllowed: form.outsideDjAllowed,
+            avgDjCost: Number(form.avgDjCost),
+            liveBandAllowed: form.liveBandAllowed,
+            singerPerformerAllowed: form.singerPerformerAllowed,
+            dancePerformersAllowed: form.dancePerformersAllowed,
+            anchorAvailable: form.anchorAvailable,
+            soundSystemAvailable: form.soundSystemAvailable,
+            lightingSetupAvailable: form.lightingSetupAvailable,
+            fireworksAllowed: form.fireworksAllowed,
+            coldPyroAllowed: form.coldPyroAllowed,
+          },
+          beauty: {
+            bridalMakeup: form.bridalMakeupAvailable,
+            makeupStartingPrice: Number(form.makeupStartingPrice),
+            hairstylist: form.hairstylistAvailable,
+            mehendiArtist: form.mehendiArtistAvailable,
+            groomStylist: form.groomStylistAvailable,
+          },
+          planning: {
+            weddingPlanner: form.weddingPlannerAvailable,
+            plannerStartingPrice: Number(form.plannerStartingPrice),
+            eventCoordinator: form.eventCoordinatorAvailable,
+            dayOfManager: form.dayOfManagerAvailable,
+          },
+          hospitality: {
+            hospitalityTeam: form.hospitalityTeamAvailable,
+            transportation: form.transportationAvailable,
+            shuttleService: form.shuttleServiceAvailable,
+            hotelTieUps: form.hotelTieUps,
+            roomBookingAssistance: form.roomBookingAssistance,
+          },
+          religious: {
+            pandit: form.panditAvailable,
+            priest: form.priestAvailable,
+            qazi: form.qaziAvailable,
+            ritualSupplies: form.ritualSuppliesAvailable,
+            mandapCeremonySetup: form.mandapCeremonySetup,
+          },
+          invitations: {
+            designAssistance: form.designAssistance,
+            digitalInvites: form.digitalInvitationAvailable,
+            weddingWebsite: form.weddingWebsiteAvailable,
+            eventSignageDesign: form.eventSignageDesign,
+          },
+          gifts: {
+            returnGiftSupplier: form.returnGiftSupplier,
+            customizedGifts: form.customizedGifts,
+            packagingServices: form.packagingServices,
+          },
+        },
+        accommodation: {
+          roomsAvailable: form.roomsAvailable,
+          totalRooms: Number(form.totalRooms),
+          startingRoomPrice: Number(form.startingRoomPrice),
+          bridalSuite: form.bridalSuite,
+          complimentaryRooms: Number(form.complimentaryRooms),
+        },
+        policies: {
+          alcoholAllowed: form.alcoholAllowed,
+          outsideAlcoholAllowed: form.generalOutsideAlcoholAllowed,
+          musicTill: form.musicTill,
+          lateNightAllowed: form.lateNightAllowed,
+          cancellation: form.cancellationPolicy,
+        },
+        parking: {
+          capacity: Number(form.parkingCapacity),
+          valetAvailable: form.valetParking,
+          chargesType: form.parkingCharges,
+          chargesAmount: Number(form.parkingChargesAmount),
+        },
+        blockedDates: form.blockedDates.map(d => new Date(d)),
+        allowReviews: form.allowReviews !== false,
+        images: form.photos.map(p => p.url).filter(Boolean),
+        photoCategories: {
+          Venue: form.photos.filter(p => p.category === 'Venue').map(p => p.url).filter(Boolean),
+          Decoration: form.photos.filter(p => p.category === 'Decoration').map(p => p.url).filter(Boolean),
+          Rooms: form.photos.filter(p => p.category === 'Rooms').map(p => p.url).filter(Boolean),
+          Food: form.photos.filter(p => p.category === 'Food').map(p => p.url).filter(Boolean),
+          Stage: form.photos.filter(p => p.category === 'Stage').map(p => p.url).filter(Boolean),
+          Other: form.photos.filter(p => p.category === 'Other').map(p => p.url).filter(Boolean),
+        }
+      };
+
       const res = await fetch('/api/halls', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-      if (!res.ok) {
-        const data = await res.json();
-        setSubmitError(data.message || 'Failed to submit hall');
+
+      if (res.ok) {
+        localStorage.removeItem(STORAGE_KEY);
+        setShowSuccessModal(true);
       } else {
-        setShowModal(true);
-        setSubmitSuccess('Hall submitted successfully!');
+        const data = await res.json();
+        setSubmitError(data.message || 'Something went wrong while listing your venue.');
       }
     } catch (err) {
-      setSubmitError('Failed to submit hall');
+      setSubmitError('Network error. Please check your connection and try again.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
-  const handleModalClose = () => {
-    setShowModal(false);
-    router.push('/dashboard');
-  };
 
-  // Step content
+  if (status === 'loading') return null;
+
   const renderStep = () => {
     switch (step) {
-      case 0:
-        return (
-          <div className="space-y-6">
-            <h2 className="text-2xl font-semibold">Let's start with your venue details</h2>
-            <div>
-              <label className="block font-medium">Venue Name</label>
-              <input
-                type="text"
-                name="name"
-                value={form.name}
-                onChange={handleChange}
-                className="mt-1 w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="e.g. Grand Palace Hall"
-              />
-              {errors.name && <p className="text-red-500 text-sm mt-1">{errors.name}</p>}
-            </div>
-            <div>
-              <label className="block font-medium">Description</label>
-              <textarea
-                name="description"
-                value={form.description}
-                onChange={handleChange}
-                className="mt-1 w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Describe your venue, its ambiance, and what makes it special."
-                rows={4}
-              />
-              {errors.description && <p className="text-red-500 text-sm mt-1">{errors.description}</p>}
-            </div>
-          </div>
-        );
-      case 1:
-        return (
-          <div className="space-y-6">
-            <h2 className="text-2xl font-semibold">Where is your venue located?</h2>
-            <div>
-              <label className="block font-medium">Address</label>
-              <input
-                type="text"
-                name="address"
-                value={form.address}
-                onChange={handleChange}
-                className="mt-1 w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Street address"
-              />
-              {errors.address && <p className="text-red-500 text-sm mt-1">{errors.address}</p>}
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <label className="block font-medium">City</label>
-                <input
-                  type="text"
-                  name="city"
-                  value={form.city}
-                  onChange={handleChange}
-                  className="mt-1 w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="City"
-                />
-                {errors.city && <p className="text-red-500 text-sm mt-1">{errors.city}</p>}
-              </div>
-              <div>
-                <label className="block font-medium">State</label>
-                <input
-                  type="text"
-                  name="state"
-                  value={form.state}
-                  onChange={handleChange}
-                  className="mt-1 w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="State"
-                />
-                {errors.state && <p className="text-red-500 text-sm mt-1">{errors.state}</p>}
-              </div>
-              <div>
-                <label className="block font-medium">Pincode</label>
-                <input
-                  type="text"
-                  name="pincode"
-                  value={form.pincode}
-                  onChange={handleChange}
-                  className="mt-1 w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="6-digit pincode"
-                  maxLength={6}
-                />
-                {errors.pincode && <p className="text-red-500 text-sm mt-1">{errors.pincode}</p>}
-              </div>
-            </div>
-          </div>
-        );
-      case 2:
-        return (
-          <div className="space-y-6">
-            <h2 className="text-2xl font-semibold">Pricing & Capacity</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block font-medium">Price (per event)</label>
-                <input
-                  type="number"
-                  name="price"
-                  value={form.price}
-                  onChange={handleChange}
-                  className="mt-1 w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="e.g. 5000"
-                  min={500}
-                />
-                {errors.price && <p className="text-red-500 text-sm mt-1">{errors.price}</p>}
-              </div>
-              <div>
-                <label className="block font-medium">Capacity</label>
-                <input
-                  type="number"
-                  name="capacity"
-                  value={form.capacity}
-                  onChange={handleChange}
-                  className="mt-1 w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="e.g. 200"
-                  min={50}
-                />
-                {errors.capacity && <p className="text-red-500 text-sm mt-1">{errors.capacity}</p>}
-              </div>
-            </div>
-          </div>
-        );
-      case 3:
-        return (
-          <div className="space-y-6">
-            <h2 className="text-2xl font-semibold">Amenities</h2>
-            <p className="text-gray-600">Select all amenities your venue offers. Add custom ones if needed!</p>
-            <div className="flex flex-wrap gap-3">
-              {form.amenities.map((amenity) => (
-                <label key={amenity} className="flex items-center space-x-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={form.selectedAmenities.includes(amenity)}
-                    onChange={() => handleAmenityChange(amenity)}
-                    className="accent-blue-600"
-                  />
-                  <span>{amenity}</span>
-                </label>
-              ))}
-            </div>
-            <div className="flex items-center gap-2 mt-2">
-              <input
-                type="text"
-                value={customAmenity}
-                onChange={(e) => setCustomAmenity(e.target.value)}
-                className="border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Add custom amenity"
-                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCustomAmenity(); } }}
-              />
-              <button
-                type="button"
-                onClick={addCustomAmenity}
-                className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
-              >
-                Add
-              </button>
-            </div>
-            {errors.amenities && <p className="text-red-500 text-sm mt-1">{errors.amenities}</p>}
-          </div>
-        );
-      case 4:
-        return (
-          <div className="space-y-6">
-            <h2 className="text-2xl font-semibold">Upload Photos</h2>
-            <p className="text-gray-600">Showcase your venue! Drag and drop or click to upload images.</p>
-            <div
-              className="border-2 border-dashed border-gray-300 rounded-lg p-6 flex flex-col items-center justify-center cursor-pointer bg-gray-50 hover:bg-gray-100 transition"
-              onClick={() => fileInputRef.current?.click()}
-              onDrop={handleDrop}
-              onDragOver={(e) => e.preventDefault()}
-            >
-              <input
-                type="file"
-                accept="image/*"
-                multiple
-                ref={fileInputRef}
-                className="hidden"
-                onChange={handlePhotoChange}
-              />
-              <svg className="w-12 h-12 text-gray-400 mb-2" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M7 16V4a1 1 0 011-1h8a1 1 0 011 1v12m-4 4h-4a1 1 0 01-1-1v-4h6v4a1 1 0 01-1 1z" /></svg>
-              <span className="text-gray-500">Drag & drop or <span className="text-blue-600 underline">click to upload</span></span>
-            </div>
-            {form.photoPreviews.length > 0 && (
-              <div className="flex flex-wrap gap-4 mt-4">
-                {form.photoPreviews.map((src, idx) => (
-                  <div key={idx} className="relative w-32 h-32">
-                    <img src={src} alt={`Venue photo ${idx + 1}`} className="object-cover w-full h-full rounded" />
-                    <button
-                      type="button"
-                      onClick={() => removePhoto(idx)}
-                      className="absolute top-1 right-1 bg-white bg-opacity-80 rounded-full p-1 hover:bg-red-100"
-                    >
-                      <svg className="w-5 h-5 text-red-500" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-            {errors.photos && <p className="text-red-500 text-sm mt-1">{errors.photos}</p>}
-          </div>
-        );
-      case 5:
-        return (
-          <div className="space-y-6">
-            <h2 className="text-2xl font-semibold">Review & Submit</h2>
-            <div className="bg-gray-50 rounded-lg p-4">
-              <h3 className="font-semibold mb-2">Venue Details</h3>
-              <p><span className="font-medium">Name:</span> {form.name}</p>
-              <p><span className="font-medium">Description:</span> {form.description}</p>
-              <h3 className="font-semibold mt-4 mb-2">Location</h3>
-              <p><span className="font-medium">Address:</span> {form.address}</p>
-              <p><span className="font-medium">City:</span> {form.city}</p>
-              <p><span className="font-medium">State:</span> {form.state}</p>
-              <p><span className="font-medium">Pincode:</span> {form.pincode}</p>
-              <h3 className="font-semibold mt-4 mb-2">Pricing</h3>
-              <p><span className="font-medium">Price:</span> ₹{form.price}</p>
-              <p><span className="font-medium">Capacity:</span> {form.capacity}</p>
-              <h3 className="font-semibold mt-4 mb-2">Amenities</h3>
-              <p>{form.selectedAmenities.join(', ')}</p>
-              <h3 className="font-semibold mt-4 mb-2">Photos</h3>
-              <div className="flex flex-wrap gap-2">
-                {form.photoPreviews.map((src, idx) => (
-                  <img key={idx} src={src} alt={`Preview ${idx + 1}`} className="w-16 h-16 object-cover rounded" />
-                ))}
-              </div>
-            </div>
-            {submitError && <div className="text-red-600 text-center text-sm mb-2">{submitError}</div>}
-            {submitSuccess && <div className="text-green-600 text-center text-sm mb-2">{submitSuccess}</div>}
-          </div>
-        );
-      default:
-        return null;
+      case 0: return <Step1BasicInfo form={form} setForm={setForm} errors={errors} />;
+      case 1: return <Step2Overview form={form} setForm={setForm} errors={errors} />;
+      case 2: return <Step3Spaces form={form} setForm={setForm} />;
+      case 3: return <Step4Pricing form={form} setForm={setForm} />;
+      case 4: return <Step5Catering form={form} setForm={setForm} />;
+      case 5: return <Step6Accommodation form={form} setForm={setForm} />;
+      case 6: return <Step7Amenities form={form} setForm={setForm} />;
+      case 7: return <Step8Photos form={form} setForm={setForm} />;
+      case 8: return <Step9Availability form={form} setForm={setForm} />;
+      case 9: return <Step10Review form={form} submitError={submitError} />;
+      default: return null;
     }
   };
 
-
+  const progress = ((step + 1) / STEPS.length) * 100;
 
   return (
-    <div className="min-h-screen bg-white">
-      {/* Navbar */}
-      <nav className="fixed top-0 left-0 w-full bg-white shadow z-20">
-        <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <img src="/logo.png" alt="WeEnYou Logo" width={36} height={36} className="h-9 w-9 object-contain" />
-            <span className="text-lg sm:text-xl font-bold tracking-tight text-blue-700">WeEnYou Hall Owner Portal</span>
-          </div>
-          <a href="/dashboard" className="ml-auto">
-            <div className="flex items-center gap-2 border border-gray-200 rounded-full px-6 py-2 bg-white hover:shadow transition cursor-pointer">
-              <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5.121 17.804A9 9 0 1112 21a8.963 8.963 0 01-6.879-3.196z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-              <span className="font-semibold text-lg text-gray-700">Welcome, Guest</span>
-            </div>
-          </a>
+    <div className="min-h-screen bg-[#F8FAFC]">
+      <Head>
+        <title>List Your Venue - WeEnYou</title>
+      </Head>
+
+      <div className="bg-gradient-to-r from-blue-700 to-indigo-800 pt-24 pb-48 px-4 relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full -mr-32 -mt-32 blur-3xl"></div>
+        <div className="max-w-4xl mx-auto text-center relative z-10">
+          <h1 className="text-3xl md:text-5xl font-extrabold text-white mb-4 tracking-tight">
+            List Your Venue
+          </h1>
+          <p className="text-blue-100 text-base md:text-lg max-w-2xl mx-auto opacity-90 leading-relaxed font-medium">
+            Join 500+ premium venues on WeEnYou and grow your business with confirmed bookings and high-quality leads.
+          </p>
         </div>
-      </nav>
+      </div>
 
-      {/* Main content */}
-      <main className="pt-20 max-w-5xl mx-auto px-4 pb-16">
-        {/* Hero */}
-        <section className="text-center mb-10">
-          <h1 className="text-4xl md:text-5xl font-extrabold mb-4">List Your Hall</h1>
-          <p className="text-lg md:text-xl text-gray-600 mb-4">Reach thousands of event planners and grow your business.</p>
-          <span className="inline-flex items-center bg-green-100 text-green-700 px-3 py-1 rounded-full text-sm font-medium">
-            <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
-            Trusted by 500+ venues
-          </span>
-        </section>
+      <main className="max-w-4xl mx-auto px-4 -mt-32 pb-20 relative z-20">
+        <div className="bg-white rounded-2xl shadow-xl shadow-blue-900/5 mb-6 overflow-hidden border border-white">
+          <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+            <span className="text-xs font-bold text-gray-500 uppercase tracking-widest">
+              Step {step + 1} of {STEPS.length}
+            </span>
+            <span className="text-xs font-black text-blue-600">
+              {Math.round(progress)}% Complete
+            </span>
+          </div>
+          
+          <div className="h-1.5 w-full bg-gray-100 relative">
+            <div 
+              className="absolute top-0 left-0 h-full bg-blue-600 transition-all duration-500 ease-out shadow-[0_0_10px_rgba(37,99,235,0.4)]"
+              style={{ width: `${progress}%` }}
+            ></div>
+          </div>
 
-        {/* Why list with us */}
-        <section className="mb-10">
-          <h2 className="text-2xl font-semibold mb-3 text-center">Why list with us?</h2>
-          <ul className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl mx-auto text-left">
-            <li className="flex items-start gap-2">
-              <span className="mt-1 text-blue-600">•</span>
-              <span>Get discovered by thousands of event organizers every month</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="mt-1 text-blue-600">•</span>
-              <span>Easy-to-use dashboard to manage bookings and inquiries</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="mt-1 text-blue-600">•</span>
-              <span>Dedicated support team to help you succeed</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="mt-1 text-blue-600">•</span>
-              <span>No hidden fees – transparent pricing</span>
-            </li>
-          </ul>
-        </section>
-
-        {/* Stepper */}
-        <section className="mb-8">
-          <ol className="flex flex-wrap items-center justify-center gap-2 md:gap-4">
-            {STEPS.map((label, idx) => (
-              <li key={label} className="flex items-center">
-                <div className={classNames(
-                  'rounded-full w-8 h-8 flex items-center justify-center font-bold',
-                  idx === step ? 'bg-blue-600 text-white' : idx < step ? 'bg-blue-200 text-blue-800' : 'bg-gray-200 text-gray-500',
-                )}>{idx + 1}</div>
-                <span className={classNames(
-                  'ml-2 text-sm font-medium',
-                  idx === step ? 'text-blue-700' : idx < step ? 'text-blue-600' : 'text-gray-400',
-                )}>{label}</span>
-                {idx < STEPS.length - 1 && <span className="mx-2 text-gray-300">→</span>}
-              </li>
-            ))}
-          </ol>
-        </section>
-
-        {/* Form */}
-        {step < STEPS.length - 1 ? (
-          <div className="bg-white/60 backdrop-blur-md rounded-2xl shadow-xl p-6 md:p-10 border border-white/40">
-            {renderStep()}
-            <div className="flex justify-between mt-8">
-              {step > 0 && (
-                <button
-                  type="button"
-                  onClick={prevStep}
-                  className="bg-gray-200 text-gray-700 px-4 py-2 rounded hover:bg-gray-300"
+          <div className="overflow-x-auto no-scrollbar bg-gray-50/50">
+            <div className="flex px-4 py-4 min-w-max md:grid md:grid-cols-10 md:px-2">
+              {STEPS.map((s, idx) => (
+                <div 
+                  key={idx} 
+                  className={`flex flex-col items-center gap-1.5 px-3 transition-opacity duration-300 ${idx === step ? 'opacity-100 scale-110' : idx < step ? 'opacity-60' : 'opacity-30'}`}
                 >
-                  Back
-                </button>
-              )}
-              <div className="flex-1" />
-              <button
-                type="button"
-                onClick={nextStep}
-                className="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700"
-              >
-                Next
-              </button>
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm shadow-sm
+                    ${idx === step ? 'bg-blue-600 text-white ring-4 ring-blue-100' : idx < step ? 'bg-emerald-500 text-white' : 'bg-gray-200 text-gray-500'}`}
+                  >
+                    {idx < step ? '✓' : s.icon}
+                  </div>
+                  <span className={`text-[9px] font-extrabold uppercase tracking-tighter text-center whitespace-nowrap
+                    ${idx === step ? 'text-blue-600' : 'text-gray-400'}`}>
+                    {s.label}
+                  </span>
+                </div>
+              ))}
             </div>
           </div>
-        ) : (
-          <form
-            onSubmit={handleSubmit}
-            className="bg-white/60 backdrop-blur-md rounded-2xl shadow-xl p-6 md:p-10 border border-white/40"
-          >
+        </div>
+
+        <div className="bg-white/80 backdrop-blur-xl rounded-3xl shadow-2xl shadow-blue-900/5 p-6 md:p-10 border border-white min-h-[500px] flex flex-col">
+          <div className="flex-1">
             {renderStep()}
-            <div className="flex justify-between mt-8">
-              {step > 0 && (
-                <button
-                  type="button"
-                  onClick={prevStep}
-                  className="bg-gray-200 text-gray-700 px-4 py-2 rounded hover:bg-gray-300"
-                >
-                  Back
-                </button>
-              )}
-              <div className="flex-1" />
+          </div>
+
+          <div className="mt-12 flex items-center justify-between pt-8 border-t border-gray-100">
+            <button
+              onClick={back}
+              disabled={step === 0}
+              className={`flex items-center gap-2 px-6 py-3.5 rounded-2xl font-bold text-sm transition-all
+                ${step === 0 ? 'text-gray-300 cursor-not-allowed' : 'text-gray-600 hover:bg-gray-100 active:scale-95'}`}
+            >
+              ← <span className="hidden sm:inline">Back to previous step</span><span className="sm:hidden">Back</span>
+            </button>
+
+            {step === STEPS.length - 1 ? (
               <button
-                type="submit"
-                className="bg-green-600 text-white px-6 py-2 rounded hover:bg-green-700"
+                onClick={handleSubmit}
+                disabled={isSubmitting}
+                className="bg-emerald-600 text-white px-10 py-4 rounded-2xl font-black text-base shadow-lg shadow-emerald-200 hover:bg-emerald-700 active:scale-95 transition-all flex items-center gap-3"
               >
-                Submit
+                {isSubmitting ? (
+                  <>
+                    <div className="w-5 h-5 border-3 border-white/30 border-t-white rounded-full animate-spin"></div>
+                    Listing Venue...
+                  </>
+                ) : (
+                  <>Submit & Go Live 🚀</>
+                )}
               </button>
-            </div>
-          </form>
-        )}
+            ) : (
+              <button
+                onClick={next}
+                className="bg-blue-600 text-white px-10 py-4 rounded-2xl font-black text-base shadow-lg shadow-blue-200 hover:bg-blue-700 active:scale-95 transition-all flex items-center gap-2 group"
+              >
+                Continue <span className="group-hover:translate-x-1 transition-transform">→</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div className="mt-8 text-center">
+          <p className="text-gray-400 text-xs font-semibold">
+            Need help listing your venue? 
+            <a href="/contact" className="text-blue-600 ml-1 hover:underline">Contact our support team</a>
+          </p>
+        </div>
       </main>
 
-      {/* Modal */}
-      {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
-          <div className="bg-white rounded-lg shadow-lg p-8 max-w-sm w-full text-center">
-            <h2 className="text-2xl font-bold mb-4">Your hall is under review</h2>
-            <p className="mb-6">Our team will verify your submission before it goes live. Thank you for listing with us!</p>
+      {showSuccessModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-blue-900/40 backdrop-blur-md animate-[fadeIn_0.3s_ease]">
+          <div className="bg-white rounded-[40px] shadow-2xl max-w-md w-full p-8 md:p-12 text-center relative overflow-hidden animate-[slideUp_0.4s_ease]">
+            <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-emerald-400 to-blue-500"></div>
+            <div className="w-24 h-24 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center text-4xl mx-auto mb-8 shadow-inner">
+              🎉
+            </div>
+            <h2 className="text-3xl font-black text-gray-900 mb-4 leading-tight">Submission Successful!</h2>
+            <p className="text-gray-600 text-lg mb-10 leading-relaxed font-medium">
+              Your venue is now being reviewed by our team. You can manage your listing and track inquiries from your dashboard.
+            </p>
             <button
-              onClick={handleModalClose}
-              className="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700"
+              onClick={() => router.push('/dashboard')}
+              className="w-full bg-blue-600 text-white py-5 rounded-2xl font-black text-lg shadow-xl shadow-blue-200 hover:bg-blue-700 active:scale-95 transition-all"
             >
-              Go to Profile
+              Go to Dashboard
             </button>
           </div>
         </div>
       )}
+
+      <style jsx global>{`
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        @keyframes slideUp {
+          from { opacity: 0; transform: translateY(40px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        .no-scrollbar::-webkit-scrollbar {
+          display: none;
+        }
+        .no-scrollbar {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+        }
+      `}</style>
     </div>
   );
-};
-
-export default ListYourHall;
+}

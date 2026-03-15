@@ -36,7 +36,7 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   
   // List of public routes that don't require authentication
-  const publicRoutes = ['/', '/signin', '/signup', '/about', '/contact', '/help', '/analytics', '/component-demo'];
+  const publicRoutes = ['/', '/signin', '/signup', '/about', '/contact', '/help', '/analytics', '/component-demo', '/privacy', '/terms'];
   const isPublicRoute = publicRoutes.includes(router.pathname);
   
   useEffect(() => {
